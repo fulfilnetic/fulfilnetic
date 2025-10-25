@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Fulfillment Data Processor",
+  "version": "1.0.0",
+  "description": "Process fulfillment data and convert to Teamleader import format",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:5001/*",
+    "https://fulfilnetic-api-5qpjvp4npa-uc.a.run.app/*",
+    "https://fulfilnetic.web.app/*",
+    "https://fulfilnetic.firebaseapp.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Fulfillment Processor"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
