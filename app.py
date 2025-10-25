@@ -574,21 +574,20 @@ def download_all_sellers():
                     filtered_df = filter_by_seller(df, seller, seller_col)
                     
                     if len(filtered_df) > 0:
-                        # Create Excel file in memory
+                        # Create Excel file using save_filtered_data to remove Label Price column
                         safe_seller_name = "".join(c for c in str(seller) if c.isalnum() or c in (' ', '-', '_')).rstrip()
                         safe_seller_name = safe_seller_name.replace(' ', '_')
                         excel_filename = f"seller_{safe_seller_name}.xlsx"
                         
-                        # Create temporary Excel file
+                        # Create temporary Excel file using save_filtered_data
                         temp_excel = os.path.join(OUTPUT_FOLDER, f"temp_{excel_filename}")
-                        filtered_df.to_excel(temp_excel, index=False, sheet_name='Seller Data')
-                        
-                        # Add to ZIP
-                        zipf.write(temp_excel, excel_filename)
-                        
-                        # Clean up temp file
-                        os.remove(temp_excel)
-                        processed_count += 1
+                        if save_filtered_data(filtered_df, temp_excel, seller):
+                            # Add to ZIP
+                            zipf.write(temp_excel, excel_filename)
+                            
+                            # Clean up temp file
+                            os.remove(temp_excel)
+                            processed_count += 1
                         
                 except Exception as e:
                     print(f"Error processing seller '{seller}': {e}")
