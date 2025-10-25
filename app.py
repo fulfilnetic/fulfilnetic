@@ -432,23 +432,21 @@ def download_file(job_id):
 def get_sellers():
     """Get list of available sellers from center.csv"""
     try:
-        # Look for center.csv file - try multiple patterns
+        # Get job_id from query parameters
+        job_id = request.args.get('job_id')
+        
+        if not job_id:
+            return jsonify({'error': 'job_id parameter is required'}), 400
+        
+        # Look for the specific job's center.csv file
         center_file = None
-        
-        # First, try to find the most recent main file
-        main_files = []
         for filename in os.listdir(UPLOAD_FOLDER):
-            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
-                file_path = os.path.join(UPLOAD_FOLDER, filename)
-                main_files.append((file_path, os.path.getmtime(file_path)))
-        
-        if main_files:
-            # Sort by modification time (most recent first) and take the first one
-            main_files.sort(key=lambda x: x[1], reverse=True)
-            center_file = main_files[0][0]
+            if filename.startswith(f"{job_id}_main_") and (filename.endswith('.csv') or filename.endswith('.xlsx')):
+                center_file = os.path.join(UPLOAD_FOLDER, filename)
+                break
         
         if not center_file:
-            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+            return jsonify({'error': f'Center data file not found for job {job_id}. Please upload files first.'}), 404
         
         # Load center data and get sellers
         df = load_center_data(center_file)
@@ -458,7 +456,8 @@ def get_sellers():
             'sellers': unique_sellers,
             'seller_column': seller_col,
             'total_records': len(df),
-            'source_file': os.path.basename(center_file)
+            'source_file': os.path.basename(center_file),
+            'job_id': job_id
         })
         
     except Exception as e:
@@ -473,27 +472,23 @@ def filter_seller():
     try:
         data = request.get_json()
         seller_value = data.get('seller')
+        job_id = data.get('job_id')
         
         if not seller_value:
             return jsonify({'error': 'Seller value is required'}), 400
         
-        # Look for center.csv file - use same logic as get_sellers
+        if not job_id:
+            return jsonify({'error': 'job_id is required'}), 400
+        
+        # Look for the specific job's center.csv file
         center_file = None
-        
-        # First, try to find the most recent main file
-        main_files = []
         for filename in os.listdir(UPLOAD_FOLDER):
-            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
-                file_path = os.path.join(UPLOAD_FOLDER, filename)
-                main_files.append((file_path, os.path.getmtime(file_path)))
-        
-        if main_files:
-            # Sort by modification time (most recent first) and take the first one
-            main_files.sort(key=lambda x: x[1], reverse=True)
-            center_file = main_files[0][0]
+            if filename.startswith(f"{job_id}_main_") and (filename.endswith('.csv') or filename.endswith('.xlsx')):
+                center_file = os.path.join(UPLOAD_FOLDER, filename)
+                break
         
         if not center_file:
-            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+            return jsonify({'error': f'Center data file not found for job {job_id}. Please upload files first.'}), 404
         
         # Load center data
         df = load_center_data(center_file)
@@ -518,7 +513,8 @@ def filter_seller():
                 'output_file': output_path,
                 'filename': output_filename,
                 'total_records': len(filtered_df),
-                'seller': seller_value
+                'seller': seller_value,
+                'job_id': job_id
             })
         else:
             return jsonify({'error': 'Failed to save filtered data'}), 500
@@ -542,23 +538,21 @@ def download_seller_file(filename):
 def download_all_sellers():
     """Download all sellers as a ZIP file"""
     try:
-        # Look for center.csv file - use same logic as other endpoints
+        data = request.get_json()
+        job_id = data.get('job_id')
+        
+        if not job_id:
+            return jsonify({'error': 'job_id is required'}), 400
+        
+        # Look for the specific job's center.csv file
         center_file = None
-        
-        # First, try to find the most recent main file
-        main_files = []
         for filename in os.listdir(UPLOAD_FOLDER):
-            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
-                file_path = os.path.join(UPLOAD_FOLDER, filename)
-                main_files.append((file_path, os.path.getmtime(file_path)))
-        
-        if main_files:
-            # Sort by modification time (most recent first) and take the first one
-            main_files.sort(key=lambda x: x[1], reverse=True)
-            center_file = main_files[0][0]
+            if filename.startswith(f"{job_id}_main_") and (filename.endswith('.csv') or filename.endswith('.xlsx')):
+                center_file = os.path.join(UPLOAD_FOLDER, filename)
+                break
         
         if not center_file:
-            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+            return jsonify({'error': f'Center data file not found for job {job_id}. Please upload files first.'}), 404
         
         # Load center data
         df = load_center_data(center_file)
@@ -604,7 +598,8 @@ def download_all_sellers():
             'zip_file': zip_path,
             'zip_filename': zip_filename,
             'total_sellers': len(unique_sellers),
-            'processed_sellers': processed_count
+            'processed_sellers': processed_count,
+            'job_id': job_id
         })
         
     except Exception as e:

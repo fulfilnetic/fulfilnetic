@@ -577,7 +577,7 @@
         async function loadSellers() {
             try {
                 console.log('Loading sellers...');
-                const response = await fetch('/api/sellers');
+                const response = await fetch(`/api/sellers?job_id=${currentJobId}`);
                 console.log('Sellers response:', response.status, response.statusText);
                 
                 if (!response.ok) {
@@ -646,7 +646,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        seller: selectedSeller
+                        seller: selectedSeller,
+                        job_id: currentJobId
                     })
                 });
                 
@@ -713,7 +714,10 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        job_id: currentJobId
+                    })
                 });
                 
                 console.log('ZIP creation response:', response.status, response.statusText);
