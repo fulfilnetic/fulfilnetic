@@ -432,12 +432,31 @@
                     <button onclick="downloadFile('${currentJobId}')">📥 Download Aggregated Data</button>
                 </div>
                 
+                <div style="margin: 20px 0;">
+                    <h4>Filter by Seller</h4>
+                    <p>Download specifications for a specific seller from the original data.</p>
+                    <div class="config-section">
+                        <div class="config-group">
+                            <label>Select Seller:</label>
+                            <select id="sellerSelect">
+                                <option value="">Loading sellers...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="filterSellerBtn" onclick="filterSeller()" disabled>📊 Download Seller Specifications</button>
+                    <button id="downloadAllBtn" onclick="downloadAllSellers()" disabled style="margin-left: 10px;">📦 Download All Sellers (ZIP)</button>
+                    <div id="sellerFilterStatus"></div>
+                </div>
+                
                 <div class="progress">
                     <div class="progress-bar" style="width: 100%"></div>
                 </div>
             `;
             
             aggregatedFile = result.output_file;
+            
+            // Load sellers when results are shown
+            loadSellers();
         }
         
         async function downloadFile(jobId) {
@@ -553,6 +572,200 @@
         function showStatus(elementId, message, type) {
             const element = document.getElementById(elementId);
             element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        async function loadSellers() {
+            try {
+                console.log('Loading sellers...');
+                const response = await fetch('/api/sellers');
+                console.log('Sellers response:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Sellers API error:', errorText);
+                    showStatus('sellerFilterStatus', `Failed to load sellers: ${response.status} ${response.statusText}`, 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                console.log('Sellers result:', result);
+                
+                if (result.sellers && result.sellers.length > 0) {
+                    const sellerSelect = document.getElementById('sellerSelect');
+                    sellerSelect.innerHTML = '<option value="">Select a seller...</option>';
+                    
+                    result.sellers.forEach(seller => {
+                        const option = document.createElement('option');
+                        option.value = seller;
+                        option.textContent = seller;
+                        sellerSelect.appendChild(option);
+                    });
+                    
+                    // Enable the filter button when sellers are loaded
+                    document.getElementById('filterSellerBtn').disabled = false;
+                    document.getElementById('downloadAllBtn').disabled = false;
+                    
+                    // Add change event listener to show selected seller
+                    sellerSelect.addEventListener('change', function() {
+                        const selectedSeller = this.value;
+                        if (selectedSeller) {
+                            showStatus('sellerFilterStatus', `Selected: "${selectedSeller}" - Click "Download Seller Specifications" to filter`, 'info');
+                        } else {
+                            showStatus('sellerFilterStatus', `Loaded ${result.sellers.length} sellers from ${result.total_records} total records (${result.source_file})`, 'info');
+                        }
+                    });
+                    
+                    showStatus('sellerFilterStatus', `Loaded ${result.sellers.length} sellers from ${result.total_records} total records (${result.source_file})`, 'info');
+                } else {
+                    showStatus('sellerFilterStatus', 'No sellers found in the data', 'error');
+                }
+            } catch (error) {
+                console.error('Sellers loading error:', error);
+                showStatus('sellerFilterStatus', `Failed to load sellers: ${error.message}`, 'error');
+            }
+        }
+        
+        async function filterSeller() {
+            const sellerSelect = document.getElementById('sellerSelect');
+            const selectedSeller = sellerSelect.value;
+            
+            if (!selectedSeller) {
+                showStatus('sellerFilterStatus', 'Please select a seller first', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('sellerFilterStatus', `Filtering data for seller "${selectedSeller}"...`, 'info');
+                document.getElementById('filterSellerBtn').disabled = true;
+                document.getElementById('filterSellerBtn').textContent = 'Filtering...';
+                
+                console.log('Filtering seller:', selectedSeller);
+                const response = await fetch('/api/filter-seller', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        seller: selectedSeller
+                    })
+                });
+                
+                console.log('Filter response:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Filter API error:', errorText);
+                    showStatus('sellerFilterStatus', `Filter failed: ${response.status} ${response.statusText}`, 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                console.log('Filter result:', result);
+                
+                if (result.total_records > 0) {
+                    showStatus('sellerFilterStatus', 
+                        `✅ Filtered ${result.total_records} records for "${result.seller}". ` +
+                        `<button onclick="downloadSellerFile('${result.filename}')" style="margin-left: 10px;">📥 Download Excel File</button>`, 
+                        'success'
+                    );
+                } else {
+                    showStatus('sellerFilterStatus', `No records found for seller "${selectedSeller}"`, 'error');
+                }
+            } catch (error) {
+                console.error('Filter error:', error);
+                showStatus('sellerFilterStatus', `Filter failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('filterSellerBtn').disabled = false;
+                document.getElementById('filterSellerBtn').textContent = '📊 Download Seller Specifications';
+            }
+        }
+        
+        async function downloadSellerFile(filename) {
+            try {
+                const response = await fetch(`/api/download-seller/${filename}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    const error = await response.json();
+                    alert('Download failed: ' + error.error);
+                }
+            } catch (error) {
+                alert('Download failed: ' + error.message);
+            }
+        }
+        
+        async function downloadAllSellers() {
+            try {
+                showStatus('sellerFilterStatus', 'Creating ZIP file with all sellers... This may take a moment.', 'info');
+                document.getElementById('downloadAllBtn').disabled = true;
+                document.getElementById('downloadAllBtn').textContent = 'Creating ZIP...';
+                
+                console.log('Creating ZIP with all sellers...');
+                const response = await fetch('/api/download-all-sellers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('ZIP creation response:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('ZIP creation API error:', errorText);
+                    showStatus('sellerFilterStatus', `ZIP creation failed: ${response.status} ${response.statusText}`, 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                console.log('ZIP creation result:', result);
+                
+                if (result.zip_filename) {
+                    showStatus('sellerFilterStatus', 
+                        `✅ Created ZIP file with ${result.processed_sellers} seller files (${result.total_sellers} total sellers). ` +
+                        `<button onclick="downloadZipFile('${result.zip_filename}')" style="margin-left: 10px;">📦 Download ZIP File</button>`, 
+                        'success'
+                    );
+                } else {
+                    showStatus('sellerFilterStatus', 'ZIP creation completed but no file was created', 'error');
+                }
+            } catch (error) {
+                console.error('ZIP creation error:', error);
+                showStatus('sellerFilterStatus', `ZIP creation failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('downloadAllBtn').disabled = false;
+                document.getElementById('downloadAllBtn').textContent = '📦 Download All Sellers (ZIP)';
+            }
+        }
+        
+        async function downloadZipFile(filename) {
+            try {
+                const response = await fetch(`/api/download-zip/${filename}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    const error = await response.json();
+                    alert('Download failed: ' + error.error);
+                }
+            } catch (error) {
+                alert('Download failed: ' + error.message);
+            }
         }
     </script>
 </body>

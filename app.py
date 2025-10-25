@@ -18,6 +18,7 @@ import pandas as pd
 import subprocess
 import threading
 import time
+import zipfile
 
 # Import our existing modules
 import sys
@@ -27,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from aggregatev1 import main as aggregate_main, load_table, resolve_main_columns, resolve_admin, aggregate_main as agg_main, aggregate_admin
     from teamleader_converter import create_teamleader_invoice_data, load_aggregated_data
+    from seller_filter import load_center_data, get_unique_sellers, filter_by_seller, save_filtered_data
     
     # Check which version we're using
     import inspect
@@ -425,6 +427,200 @@ def download_file(job_id):
         return jsonify({'error': 'Output file not found'}), 404
     
     return send_file(output_file, as_attachment=True)
+
+@app.route('/api/sellers', methods=['GET'])
+def get_sellers():
+    """Get list of available sellers from center.csv"""
+    try:
+        # Look for center.csv file - try multiple patterns
+        center_file = None
+        
+        # First, try to find the most recent main file
+        main_files = []
+        for filename in os.listdir(UPLOAD_FOLDER):
+            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                main_files.append((file_path, os.path.getmtime(file_path)))
+        
+        if main_files:
+            # Sort by modification time (most recent first) and take the first one
+            main_files.sort(key=lambda x: x[1], reverse=True)
+            center_file = main_files[0][0]
+        
+        if not center_file:
+            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+        
+        # Load center data and get sellers
+        df = load_center_data(center_file)
+        unique_sellers, seller_col = get_unique_sellers(df)
+        
+        return jsonify({
+            'sellers': unique_sellers,
+            'seller_column': seller_col,
+            'total_records': len(df),
+            'source_file': os.path.basename(center_file)
+        })
+        
+    except Exception as e:
+        print(f"Error in get_sellers: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to load sellers: {str(e)}'}), 500
+
+@app.route('/api/filter-seller', methods=['POST'])
+def filter_seller():
+    """Filter center data by seller"""
+    try:
+        data = request.get_json()
+        seller_value = data.get('seller')
+        
+        if not seller_value:
+            return jsonify({'error': 'Seller value is required'}), 400
+        
+        # Look for center.csv file - use same logic as get_sellers
+        center_file = None
+        
+        # First, try to find the most recent main file
+        main_files = []
+        for filename in os.listdir(UPLOAD_FOLDER):
+            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                main_files.append((file_path, os.path.getmtime(file_path)))
+        
+        if main_files:
+            # Sort by modification time (most recent first) and take the first one
+            main_files.sort(key=lambda x: x[1], reverse=True)
+            center_file = main_files[0][0]
+        
+        if not center_file:
+            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+        
+        # Load center data
+        df = load_center_data(center_file)
+        unique_sellers, seller_col = get_unique_sellers(df)
+        
+        # Filter by seller
+        filtered_df = filter_by_seller(df, seller_value, seller_col)
+        
+        if len(filtered_df) == 0:
+            return jsonify({'error': f'No records found for seller "{seller_value}"'}), 404
+        
+        # Generate output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_seller_name = "".join(c for c in str(seller_value) if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_seller_name = safe_seller_name.replace(' ', '_')
+        output_filename = f"seller_{safe_seller_name}_{timestamp}.xlsx"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        
+        # Save filtered data
+        if save_filtered_data(filtered_df, output_path, seller_value):
+            return jsonify({
+                'output_file': output_path,
+                'filename': output_filename,
+                'total_records': len(filtered_df),
+                'seller': seller_value
+            })
+        else:
+            return jsonify({'error': 'Failed to save filtered data'}), 500
+            
+    except Exception as e:
+        print(f"Error in filter_seller: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to filter seller: {str(e)}'}), 500
+
+@app.route('/api/download-seller/<filename>', methods=['GET'])
+def download_seller_file(filename):
+    """Download seller filtered file"""
+    file_path = os.path.join(OUTPUT_FOLDER, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    return send_file(file_path, as_attachment=True)
+
+@app.route('/api/download-all-sellers', methods=['POST'])
+def download_all_sellers():
+    """Download all sellers as a ZIP file"""
+    try:
+        # Look for center.csv file - use same logic as other endpoints
+        center_file = None
+        
+        # First, try to find the most recent main file
+        main_files = []
+        for filename in os.listdir(UPLOAD_FOLDER):
+            if filename.endswith('_main_center.csv') or filename.endswith('_main_center.xlsx'):
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                main_files.append((file_path, os.path.getmtime(file_path)))
+        
+        if main_files:
+            # Sort by modification time (most recent first) and take the first one
+            main_files.sort(key=lambda x: x[1], reverse=True)
+            center_file = main_files[0][0]
+        
+        if not center_file:
+            return jsonify({'error': 'Center data file not found. Please upload files first.'}), 404
+        
+        # Load center data
+        df = load_center_data(center_file)
+        unique_sellers, seller_col = get_unique_sellers(df)
+        
+        if not unique_sellers:
+            return jsonify({'error': 'No sellers found in the data'}), 404
+        
+        # Create ZIP file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"all_sellers_{timestamp}.zip"
+        zip_path = os.path.join(OUTPUT_FOLDER, zip_filename)
+        
+        processed_count = 0
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for seller in unique_sellers:
+                try:
+                    # Filter data for this seller
+                    filtered_df = filter_by_seller(df, seller, seller_col)
+                    
+                    if len(filtered_df) > 0:
+                        # Create Excel file in memory
+                        safe_seller_name = "".join(c for c in str(seller) if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                        safe_seller_name = safe_seller_name.replace(' ', '_')
+                        excel_filename = f"seller_{safe_seller_name}.xlsx"
+                        
+                        # Create temporary Excel file
+                        temp_excel = os.path.join(OUTPUT_FOLDER, f"temp_{excel_filename}")
+                        filtered_df.to_excel(temp_excel, index=False, sheet_name='Seller Data')
+                        
+                        # Add to ZIP
+                        zipf.write(temp_excel, excel_filename)
+                        
+                        # Clean up temp file
+                        os.remove(temp_excel)
+                        processed_count += 1
+                        
+                except Exception as e:
+                    print(f"Error processing seller '{seller}': {e}")
+                    continue
+        
+        return jsonify({
+            'zip_file': zip_path,
+            'zip_filename': zip_filename,
+            'total_sellers': len(unique_sellers),
+            'processed_sellers': processed_count
+        })
+        
+    except Exception as e:
+        print(f"Error in download_all_sellers: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to create ZIP file: {str(e)}'}), 500
+
+@app.route('/api/download-zip/<filename>', methods=['GET'])
+def download_zip_file(filename):
+    """Download ZIP file containing all seller data"""
+    file_path = os.path.join(OUTPUT_FOLDER, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'ZIP file not found'}), 404
+    
+    return send_file(file_path, as_attachment=True)
 
 
 if __name__ == '__main__':
