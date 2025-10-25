@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'https://fulfilnetic-api-5qpjvp4npa-uc.a.run.app'; // Firebase Function
+const API_BASE_URL = 'http://localhost:5001'; // Local Flask app
 
 // Global variables
 let currentJobId = null;

@@ -8,10 +8,7 @@
     "storage"
   ],
   "host_permissions": [
-    "http://localhost:5001/*",
-    "https://fulfilnetic-api-5qpjvp4npa-uc.a.run.app/*",
-    "https://fulfilnetic.web.app/*",
-    "https://fulfilnetic.firebaseapp.com/*"
+    "http://localhost:5001/*"
   ],
   "action": {
     "default_popup": "popup.html",
