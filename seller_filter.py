@@ -77,14 +77,20 @@ def filter_by_seller(df, seller_value, seller_col):
     return filtered_df
 
 def save_filtered_data(df, output_path, seller_value):
-    """Save filtered data to Excel format"""
+    """Save filtered data to Excel format with Label Price column removed"""
     try:
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
+        # Remove Label Price column if it exists
+        df_cleaned = df.copy()
+        if 'Label Price' in df_cleaned.columns:
+            df_cleaned = df_cleaned.drop('Label Price', axis=1)
+            log(f"Removed 'Label Price' column from seller '{seller_value}' output")
+        
         # Save as Excel file
-        df.to_excel(output_path, index=False, sheet_name='Seller Data')
-        log(f"Saved {len(df)} rows to {output_path}")
+        df_cleaned.to_excel(output_path, index=False, sheet_name='Seller Data')
+        log(f"Saved {len(df_cleaned)} rows to {output_path}")
         return True
     except Exception as e:
         log(f"Error saving file: {e}")
